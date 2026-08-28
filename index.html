@@ -503,15 +503,31 @@ function primeRickrollAudio(){
   rickrollAudio.play().catch(() => { /* if this fails, revealRickroll will just try again silently */ });
 }
 
+let wrongPasswordAttempts = 0;
+
 function passwordGate(){
   addPasswordForm(async (value) => {
     primeRickrollAudio(); // must happen synchronously within this click, before any await
+
     if(value === PASSWORD){
+      wrongPasswordAttempts = 0;
+
       await typeLine('access granted.', 'bright');
       await wait(900);
       await revealSequence();
     } else {
+      wrongPasswordAttempts++;
+
       const deniedLine = await typeLine('access denied.', 'red');
+
+      // On the 5th wrong password, show the extra hint alongside it.
+      if(wrongPasswordAttempts === 5){
+        const hintLine = document.createElement('span');
+        hintLine.className = 'faded';
+        hintLine.textContent = '  look around. there are more tabs';
+        deniedLine.appendChild(hintLine);
+      }
+
       await wait(1100);
       deniedLine.remove();
       passwordGate();

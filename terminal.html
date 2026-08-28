@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ACCESS TERMINAL</title>
+<style>
+  :root{
+    --bg:#050705;
+    --bg2:#0a0f0a;
+    --fg:#4dff88;
+    --fg-dim:#1f7a44;
+    --fg-bright:#8fffb8;
+    --amber:#ffb454;
+    --red:#ff5555;
+    --scan:rgba(77,255,136,0.035);
+    --font-mono:'Courier New', 'Consolas', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--bg);
+    font-family:var(--font-mono);
+    color:var(--fg);
+    overflow:hidden;
+  }
+  body{
+    display:flex;
+    align-items:stretch;
+    justify-content:center;
+  }
+  /* CRT scanline + flicker overlay */
+  #crt{
+    position:fixed;inset:0;
+    pointer-events:none;
+    background:repeating-linear-gradient(
+      to bottom,
+      var(--scan) 0px,
+      var(--scan) 1px,
+      transparent 2px,
+      transparent 3px
+    );
+    mix-blend-mode:overlay;
+    z-index:50;
+  }
+  #vignette{
+    position:fixed;inset:0;
+    pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+    z-index:51;
+  }
+  #flicker{
+    position:fixed;inset:0;
+    pointer-events:none;
+    background:rgba(77,255,136,0.02);
+    opacity:0;
+    z-index:52;
+    animation:flick 7s infinite;
+  }
+  @keyframes flick{
+    0%,96%,100%{opacity:0;}
+    97%{opacity:1;}
+    98%{opacity:0;}
+    99%{opacity:0.6;}
+  }
+
+  #wrap{
+    width:100%;
+    max-width:780px;
+    height:100%;
+    padding:32px 28px 24px;
+    display:flex;
+    flex-direction:column;
+  }
+  #topbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:11px;
+    letter-spacing:2px;
+    color:var(--fg-bright);
+    border-bottom:1px solid var(--fg-bright);
+    padding-bottom:8px;
+    margin-bottom:14px;
+    flex-shrink:0;
+  }
+  #topbar .navbtn{
+    color:var(--fg-bright);
+    cursor:pointer;
+    background:none;
+    border:1px solid var(--fg-bright);
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:2px;
+    padding:5px 10px;
+    transition:all .15s;
+  }
+  #topbar .navbtn:hover, #topbar .navbtn.active{
+    color:var(--bg);
+    background:var(--fg-bright);
+    border-color:var(--fg-bright);
+  }
+  #screen{
+    flex:1;
+    overflow-y:auto;
+    font-size:15px;
+    line-height:1.65;
+    padding-right:6px;
+    scrollbar-width:thin;
+    scrollbar-color:var(--fg-dim) transparent;
+  }
+  #screen::-webkit-scrollbar{width:6px;}
+  #screen::-webkit-scrollbar-thumb{background:var(--fg-dim);}
+
+  .line{white-space:pre-wrap;word-break:break-word;margin:0 0 2px;}
+  .dim{color:var(--fg-dim);}
+  .bright{color:var(--fg-bright);}
+  .amber{color:var(--amber);}
+  .faded{color:var(--fg); opacity:0.4;}
+  .red{color:var(--red);}
+  .glitch{
+    color:var(--red);
+    text-shadow:0 0 5px var(--red), 0 0 1px var(--red);
+    letter-spacing:1px;
+  }
+  .cursor{
+    display:inline-block;
+    width:9px;height:16px;
+    background:var(--fg);
+    vertical-align:-3px;
+    animation:blink 1s steps(1) infinite;
+    margin-left:2px;
+  }
+  @keyframes blink{50%{opacity:0;}}
+
+  .barwrap{margin:4px 0 10px;color:var(--fg-bright);}
+  .bar{
+    display:inline-block;
+    letter-spacing:0;
+  }
+
+  .choices, .pwform{
+    margin-top:14px;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  button.opt{
+    font-family:var(--font-mono);
+    background:transparent;
+    border:1px solid var(--fg);
+    color:var(--fg);
+    padding:9px 20px;
+    font-size:14px;
+    letter-spacing:1px;
+    cursor:pointer;
+    transition:all .15s;
+  }
+  button.opt:hover{
+    background:var(--fg);
+    color:var(--bg);
+  }
+  input.pwinput{
+    font-family:var(--font-mono);
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--fg);
+    color:var(--fg-bright);
+    font-size:15px;
+    padding:6px 2px;
+    outline:none;
+    width:220px;
+    letter-spacing:2px;
+  }
+  input.pwinput::placeholder{color:var(--fg-dim);}
+
+  #info-page{
+    display:none;
+    flex:1;
+    overflow-y:auto;
+    font-size:15px;
+    line-height:1.9;
+  }
+  #info-page .riddle{
+    color:var(--fg-bright);
+    font-style:italic;
+    max-width:520px;
+  }
+  #info-page .fragment{
+    margin-top:26px;
+    font-size:22px;
+    letter-spacing:6px;
+    color:var(--red);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    #flicker{animation:none;opacity:0;}
+    .cursor{animation:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="crt"></div>
+<div id="vignette"></div>
+<div id="flicker"></div>
+
+<div id="wrap">
+  <div id="topbar">
+    <span>SYS://REMOTE_SESSION</span>
+    <div>
+      <button class="navbtn active" id="nav-term">LOG&nbsp;IN</button>
+      <button class="navbtn" id="nav-info">INFO</button>
+    </div>
+  </div>
+
+  <div id="screen"></div>
+
+  <div id="info-page">
+    <p class="line dim">// archived_note.txt</p>
+    <p class="riddle">where the tree and the torch departed. where memories lay.<br>
+    where light shined through. do not dart your eyes around.<br>
+    keep it steady on the fire. he will be back. that is the promise.</p>
+    <p class="line" style="margin-top:22px;">look for the source. that is your key.</p>
+    <p class="fragment">ch&#8212;&#8212;&#8212;p&#8209;</p>
+    <div id="info-hint" style="margin-top:28px;"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — edit these before sending the link
+   ============================================================ */
+const PASSWORD = "ch92bp8";                 // the password gate
+const REDIRECT_URL = "https://example.com/gift"; // the real birthday page
+// Target reveal moment as an exact instant, including a fixed UTC offset,
+// so it doesn't depend on what timezone the viewer's device is set to.
+// e.g. "2026-08-30T00:00:00+04:00" = Aug 30 2026, 00:00, Georgia time (UTC+4)
+const TARGET_ISO = "2026-08-30T00:00:00+04:00";
+
+// The rickroll played right before the real reveal. Two local files, hosted
+// next to this HTML file — you'll need to supply these yourself (I can't
+// bundle the actual copyrighted video/audio). See the note at the bottom of
+// this config block for how to get them from a video you already have.
+const RICKROLL_VIDEO_SRC = "rickroll.mp4"; // visual only — always played muted, so it autoplays reliably everywhere
+const RICKROLL_AUDIO_SRC = "rickroll.mp3"; // the actual sound — kept silent until reveal, then unmuted
+const RICKROLL_SECONDS = 3;
+// If you already have a legally-obtained copy of the video (e.g. one you
+// downloaded yourself), you can pull the audio out of it with ffmpeg:
+//   ffmpeg -i your-video.mp4 -vn -q:a 2 rickroll.mp3
+/* ============================================================ */
+
+const screen = document.getElementById('screen');
+const infoPage = document.getElementById('info-page');
+const infoHint = document.getElementById('info-hint');
+const navTerm = document.getElementById('nav-term');
+const navInfo = document.getElementById('nav-info');
+
+let infoHintTimer = null;
+let infoHintShown = false;
+
+navInfo.addEventListener('click', () => {
+  infoPage.style.display = 'block';
+  screen.style.display = 'none';
+  navInfo.classList.add('active');
+  navTerm.classList.remove('active');
+  if(!infoHintShown && !infoHintTimer){
+    infoHintTimer = setTimeout(showInfoHint, 8000); // fires if he lingers here
+  }
+});
+navTerm.addEventListener('click', () => {
+  infoPage.style.display = 'none';
+  screen.style.display = 'block';
+  navTerm.classList.add('active');
+  navInfo.classList.remove('active');
+  if(infoHintTimer){ clearTimeout(infoHintTimer); infoHintTimer = null; }
+});
+
+function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+function addLine(html, cls=''){
+  const p = document.createElement('p');
+  p.className = 'line ' + cls;
+  p.innerHTML = html;
+  screen.appendChild(p);
+  screen.scrollTop = screen.scrollHeight;
+  return p;
+}
+
+// typewriter effect, targeting an arbitrary container (defaults to the terminal screen)
+async function typeLineInto(container, text, cls='', speed=18){
+  const p = document.createElement('p');
+  p.className = 'line ' + cls;
+  container.appendChild(p);
+  for(let i=0;i<text.length;i++){
+    p.textContent += text[i];
+    container.scrollTop = container.scrollHeight;
+    await wait(speed);
+  }
+  return p;
+}
+
+async function showInfoHint(){
+  if(infoHintShown) return;
+  infoHintShown = true;
+  await typeLineInto(infoHint, '...', 'faded', 60);
+  await wait(500);
+  await typeLineInto(infoHint, "pst. that's me.", 'faded');
+  await wait(300);
+  await typeLineInto(infoHint, 'this page is a... clue. for the password.', 'faded');
+  await wait(300);
+  await typeLineInto(infoHint, 'ch stands for chapter and p for page...', 'faded');
+  await wait(300);
+  await typeLineInto(infoHint, 'hopefully you get what you need to do now', 'faded');
+}
+
+// typewriter effect
+async function typeLine(text, cls='', speed=18){
+  const p = document.createElement('p');
+  p.className = 'line ' + cls;
+  screen.appendChild(p);
+  for(let i=0;i<text.length;i++){
+    p.textContent += text[i];
+    screen.scrollTop = screen.scrollHeight;
+    await wait(speed);
+  }
+  return p;
+}
+
+const GLITCH_CHARS = '!@#$%&*_+=<>?/\\|~ΩΨΔ§±×÷☠✞✟▓▒░█▌▐■≡≠∆∑∏∞×¤';
+function randomGlitchString(len){
+  let s = '';
+  for(let i=0;i<len;i++){ s += GLITCH_CHARS[Math.floor(Math.random()*GLITCH_CHARS.length)]; }
+  return s;
+}
+
+// types a plain-text prefix, then appends a span of rapidly-randomizing
+// "corrupted" characters for the given duration
+function typeLineWithGlitch(prefixText, glitchLen, cls='', speed=18, glitchDurationMs=1400, glitchIntervalMs=45){
+  return new Promise(async (resolve) => {
+    const p = document.createElement('p');
+    p.className = 'line ' + cls;
+    screen.appendChild(p);
+    for(let i=0;i<prefixText.length;i++){
+      p.textContent += prefixText[i];
+      screen.scrollTop = screen.scrollHeight;
+      await wait(speed);
+    }
+    const span = document.createElement('span');
+    span.className = 'glitch';
+    p.appendChild(span);
+    screen.scrollTop = screen.scrollHeight;
+    const start = Date.now();
+    const iv = setInterval(() => {
+      span.textContent = randomGlitchString(glitchLen);
+      screen.scrollTop = screen.scrollHeight;
+      if(Date.now() - start >= glitchDurationMs){
+        clearInterval(iv);
+        resolve(p);
+      }
+    }, glitchIntervalMs);
+  });
+}
+
+// fake loading bar that fills then shows "complete."
+async function loadingBar(label, ms=1400, width=24){
+  const wrapDiv = document.createElement('div');
+  wrapDiv.className = 'barwrap';
+  const barSpan = document.createElement('span');
+  barSpan.className = 'bar';
+  wrapDiv.appendChild(document.createTextNode(label + ' ['));
+  wrapDiv.appendChild(barSpan);
+  wrapDiv.appendChild(document.createTextNode('] '));
+  const pctSpan = document.createElement('span');
+  wrapDiv.appendChild(pctSpan);
+  screen.appendChild(wrapDiv);
+
+  const steps = width;
+  for(let i=0;i<=steps;i++){
+    barSpan.textContent = '█'.repeat(i) + '░'.repeat(steps-i);
+    pctSpan.textContent = Math.round((i/steps)*100) + '%';
+    screen.scrollTop = screen.scrollHeight;
+    await wait(ms/steps);
+  }
+  return wrapDiv;
+}
+
+function addChoiceButtons(onYes, onNo){
+  const div = document.createElement('div');
+  div.className = 'choices';
+  const yes = document.createElement('button');
+  yes.className = 'opt';
+  yes.textContent = 'YES';
+  const no = document.createElement('button');
+  no.className = 'opt';
+  no.textContent = 'NO';
+  yes.onclick = () => { div.remove(); onYes(); };
+  no.onclick = () => { div.remove(); onNo(); };
+  div.appendChild(yes);
+  div.appendChild(no);
+  screen.appendChild(div);
+  screen.scrollTop = screen.scrollHeight;
+}
+
+function addPasswordForm(onSubmit){
+  const div = document.createElement('div');
+  div.className = 'pwform';
+  const input = document.createElement('input');
+  input.className = 'pwinput';
+  input.type = 'password';
+  input.placeholder = 'password';
+  input.autocomplete = 'off';
+  const btn = document.createElement('button');
+  btn.className = 'opt';
+  btn.textContent = 'ENTER';
+  // remove this form the moment it's submitted (right or wrong), so only one
+  // password box is ever on screen at a time
+  const submit = () => {
+    if(div.isConnected){ div.remove(); }
+    onSubmit(input.value.trim());
+  };
+  btn.onclick = submit;
+  input.addEventListener('keydown', e => { if(e.key === 'Enter') submit(); });
+  div.appendChild(input);
+  div.appendChild(btn);
+  screen.appendChild(div);
+  input.focus();
+  screen.scrollTop = screen.scrollHeight;
+}
+
+// Gets the real current time from an external clock rather than trusting the
+// viewer's device clock (which can be wrong, or deliberately changed).
+// worldtimeapi.org is known to be flaky (occasional 502s / downtime), so a
+// second independent API is tried before ever falling back to the device
+// clock as a last resort.
+async function fetchTimeFromWorldTimeAPI(){
+  const resp = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+  if(!resp.ok) throw new Error('worldtimeapi bad response');
+  const data = await resp.json();
+  const d = new Date(data.utc_datetime);
+  if(isNaN(d.getTime())) throw new Error('worldtimeapi bad datetime');
+  return d;
+}
+
+async function fetchTimeFromTimeAPIio(){
+  const resp = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Etc/UTC', { cache: 'no-store' });
+  if(!resp.ok) throw new Error('timeapi.io bad response');
+  const data = await resp.json();
+  const d = new Date(Date.UTC(data.year, data.month - 1, data.day, data.hour, data.minute, data.seconds));
+  if(isNaN(d.getTime())) throw new Error('timeapi.io bad datetime');
+  return d;
+}
+
+async function getTrustedNow(){
+  const sources = [fetchTimeFromWorldTimeAPI, fetchTimeFromTimeAPIio];
+  for(const src of sources){
+    try {
+      const result = await src();
+      return result;
+    } catch(e){
+      // try the next source
+    }
+  }
+  // both external clocks failed (offline, both APIs down, CORS blocked, etc) —
+  // fall back to the device clock as a last resort
+  return new Date();
+}
+
+async function isRevealTime(){
+  const now = await getTrustedNow();
+  const target = new Date(TARGET_ISO);
+  if(isNaN(target.getTime())){
+    // TARGET_ISO is malformed — fail open rather than permanently locking
+    // the page behind a typo
+    console.error('TARGET_ISO is not a valid date/time:', TARGET_ISO);
+    return true;
+  }
+  console.log('[time check] now:', now.toISOString(), '| target:', target.toISOString(), '| ready:', now.getTime() >= target.getTime());
+  return now.getTime() >= target.getTime();
+}
+
+async function proceedSequenceFixed(){
+  await typeLineWithGlitch('performing action: activating the ', 20, 'bright', 18, 1400, 45);
+  await loadingBar('', 1300, 20);
+  await wait(600);
+  await typeLine('Welcome Back, Admin', 'bright');
+  await wait(400);
+  await typeLine('please enter the password:', 'bright');
+  passwordGate();
+}
+
+// shared password-retry loop, used by the normal flow and the debug shortcut
+// starts the rickroll audio silently, right inside a real click handler, so
+// the browser treats it as user-initiated. It keeps quietly playing at
+// volume 0 in the background; because it began during a genuine click,
+// browsers allow it to be un-muted later (at reveal time) without requiring
+// a second click. Starting fresh, un-muted, later on its own would get
+// blocked — this is the standard workaround for that.
+let rickrollAudio = null;
+function primeRickrollAudio(){
+  if(rickrollAudio) return;
+  rickrollAudio = new Audio(RICKROLL_AUDIO_SRC);
+  rickrollAudio.volume = 0;
+  rickrollAudio.play().catch(() => { /* if this fails, revealRickroll will just try again silently */ });
+}
+
+function passwordGate(){
+  addPasswordForm(async (value) => {
+    primeRickrollAudio(); // must happen synchronously within this click, before any await
+    if(value === PASSWORD){
+      await typeLine('access granted.', 'bright');
+      await wait(900);
+      await revealSequence();
+    } else {
+      const deniedLine = await typeLine('access denied.', 'red');
+      await wait(1100);
+      deniedLine.remove();
+      passwordGate();
+    }
+  });
+}
+
+// fullscreen rickroll: a muted video (guaranteed to autoplay everywhere)
+// paired with the pre-primed audio element, unmuted right as it's shown
+function playRickroll(){
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = '#000';
+    overlay.style.zIndex = '200';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+
+    const vid = document.createElement('video');
+    vid.src = RICKROLL_VIDEO_SRC;
+    vid.muted = true; // visual only — the separate audio element carries the sound
+    vid.autoplay = true;
+    vid.playsInline = true;
+    vid.style.width = '100%';
+    vid.style.height = '100%';
+    vid.style.objectFit = 'contain';
+    overlay.appendChild(vid);
+    document.body.appendChild(overlay);
+    vid.play().catch(() => {});
+
+    if(rickrollAudio){
+      try {
+        rickrollAudio.currentTime = 0;
+        rickrollAudio.volume = 1;
+        rickrollAudio.play().catch(() => {});
+      } catch(e){}
+    }
+
+    setTimeout(() => {
+      overlay.remove();
+      if(rickrollAudio){
+        rickrollAudio.pause();
+        rickrollAudio.volume = 0;
+      }
+      resolve();
+    }, RICKROLL_SECONDS * 1000);
+  });
+}
+
+async function runFooledReveal(){
+  await wait(600);
+  await typeLine('...', 'red', 80);
+  await wait(700);
+  await typeLine('you have been fooled.', 'red');
+  await wait(500);
+  await typeLine('how naive.', 'red');
+  await wait(500);
+  await typeLine('truly.', 'red');
+  await wait(900);
+  await playRickroll();
+  await typeLine('Just kidding :3', 'bright');
+  await wait(1500);
+  window.location.href = REDIRECT_URL;
+}
+
+// after "too early", keeps quietly rechecking the real time in the background
+// so the reveal fires on its own the moment the target time arrives —
+// no refresh, no re-entering the password
+function waitForRevealTime(){
+  const POLL_MS = 15000; // recheck every 15 seconds
+  const check = async () => {
+    const ready = await isRevealTime();
+    if(ready){
+      await runFooledReveal();
+    } else {
+      setTimeout(check, POLL_MS);
+    }
+  };
+  setTimeout(check, POLL_MS);
+}
+
+async function revealSequence(){
+  const onTime = await isRevealTime();
+  if(onTime){
+    await runFooledReveal();
+  } else {
+    await wait(500);
+    await typeLine('too early. come back at 00:00.', 'amber');
+    waitForRevealTime();
+  }
+}
+
+// debug shortcut: add ?debug=1 to the URL to skip straight to the password
+// prompt, for quickly testing the time-check logic without clicking through
+// the whole intro every time
+async function debugBoot(){
+  addLine('[DEBUG MODE — skipping intro]', 'dim');
+  await typeLine('please enter the password:', 'bright');
+  passwordGate();
+}
+
+async function boot(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('debug') === '1'){
+    await debugBoot();
+    return;
+  }
+  await wait(700);
+  await typeLine('Initializing...', 'bright');
+  await loadingBar('', 1300, 22);
+  await typeLine('complete.', 'bright');
+  await wait(400);
+  await typeLine('locating...', 'bright');
+  await loadingBar('', 900, 18);
+  await typeLine('complete.', 'bright');
+  await wait(500);
+  await askToProceedFixed();
+}
+
+async function askToProceedFixed(){
+  await typeLine('you are not supposed to be here. not yet.', 'red');
+  await wait(400);
+  await typeLine('are you really sure you want to proceed?', 'red');
+  await wait(200);
+  addChoiceButtons(
+    async () => { await proceedSequenceFixed(); },
+    async () => { await stallSequenceFixed(); }
+  );
+}
+
+let noCount = 0;
+
+async function stallSequenceFixed(){
+  noCount++;
+  if(noCount === 1){
+    await typeLine('...', 'faded', 60);
+    await wait(500);
+    await typeLine('...', 'faded', 60);
+    await wait(700);
+    await typeLine("pst... hey. yeah. that's me.", 'faded');
+    await wait(300);
+    await typeLine("you never heard this but don't break the character!", 'faded');
+    await wait(500);
+    await typeLine('anyway. ahem. where were we? ah yes.', 'faded');
+    await wait(600);
+  } else if(noCount === 2){
+    await typeLine('... heeey stop that. just press yes.', 'faded');
+    await wait(600);
+  } else if(noCount === 3){
+    await typeLine('HEEEEY!!!', 'faded');
+    await wait(600);
+  } else if(noCount === 4){
+    await typeLine('... i am being completely serious, do not ruin my fun...', 'faded');
+    await wait(700);
+  } else if(noCount === 5){
+    await typeLine('bro. okay. okay. that is me, Yukii. i made this little arg for you. so now be a darling and do not break the character, okay? come on.', 'faded');
+    await wait(800);
+  } else if(noCount === 6){
+    await typeLine('you really are Ren, are you not... bruh. well. i can sit here for a while.', 'faded');
+    await wait(800);
+  } else {
+    await typeLine('...', 'faded', 60);
+    await wait(500);
+  }
+  await askToProceedFixed();
+}
+
+boot();
+</script>
+</body>
+</html>

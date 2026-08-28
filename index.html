@@ -518,18 +518,26 @@ function passwordGate(){
     } else {
       wrongPasswordAttempts++;
 
+      // Show the denial with the normal typewriter effect.
       const deniedLine = await typeLine('access denied.', 'red');
 
+      // On the 5th wrong attempt, permanently add the hint.
+      // typeLine() makes it appear letter by letter just like the other text.
       if(wrongPasswordAttempts === 5){
-        const hintLine = document.createElement('p');
-        hintLine.className = 'line faded';
-        hintLine.textContent = 'look around. there are more tabs';
-        screen.appendChild(hintLine);
-        screen.scrollTop = screen.scrollHeight;
+        await wait(300);
+        await typeLine(
+          'look around. there are more tabs',
+          'faded',
+          18
+        );
       }
 
       await wait(1100);
+
+      // Only remove the temporary "access denied." message.
+      // The hint remains untouched.
       deniedLine.remove();
+
       passwordGate();
     }
   });

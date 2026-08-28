@@ -235,7 +235,7 @@ const REDIRECT_URL = "https://example.com/gift"; // the real birthday page
 // Target reveal moment as an exact instant, including a fixed UTC offset,
 // so it doesn't depend on what timezone the viewer's device is set to.
 // e.g. "2026-08-30T00:00:00+04:00" = Aug 30 2026, 00:00, Georgia time (UTC+4)
-const TARGET_ISO = "2026-08-28T00:00:00+04:00";
+const TARGET_ISO = "2026-08-30T00:00:00+04:00";
 
 // The rickroll played right before the real reveal. Two local files, hosted
 // next to this HTML file — you'll need to supply these yourself (I can't
@@ -243,7 +243,7 @@ const TARGET_ISO = "2026-08-28T00:00:00+04:00";
 // this config block for how to get them from a video you already have.
 const RICKROLL_VIDEO_SRC = "rickroll.mp4"; // visual only — always played muted, so it autoplays reliably everywhere
 const RICKROLL_AUDIO_SRC = "rickroll.mp3"; // the actual sound — kept silent until reveal, then unmuted
-const RICKROLL_SECONDS = 3;
+const RICKROLL_SECONDS = 5;
 // If you already have a legally-obtained copy of the video (e.g. one you
 // downloaded yourself), you can pull the audio out of it with ffmpeg:
 //   ffmpeg -i your-video.mp4 -vn -q:a 2 rickroll.mp3
